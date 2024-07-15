@@ -1,9 +1,6 @@
 import * as dotenv from 'dotenv'
 import type { ChatGPTAPIOptions, ChatMessage, SendMessageOptions } from 'chatgpt'
-import { ChatGPTAPI, ChatGPTUnofficialProxyAPI } from 'chatgpt'
-import { SocksProxyAgent } from 'socks-proxy-agent'
-import httpsProxyAgent from 'https-proxy-agent'
-import fetch from 'node-fetch'
+import { ChatGPTAPI } from 'chatgpt'
 import jwt_decode from 'jwt-decode'
 import type { AuditConfig, KeyConfig, UserInfo } from '../storage/model'
 import { Status } from '../storage/model'
@@ -13,11 +10,11 @@ import { textAuditServices } from '../utils/textAudit'
 import { getCacheApiKeys, getCacheConfig, getOriginConfig } from '../storage/config'
 import { sendResponse } from '../utils'
 import { hasAnyRole, isNotEmptyString } from '../utils/is'
-import type { ChatContext, ChatGPTUnofficialProxyAPIOptions, JWT, ModelConfig } from '../types'
-import { getChatByMessageId, updateRoomAccountId, updateRoomChatModel } from '../storage/mongo'
+import type { ChatContext, JWT, ModelConfig } from '../types'
+import { getChatByMessageId, updateRoomChatModel } from '../storage/mongo'
 import type { RequestOptions } from './types'
 
-const { HttpsProxyAgent } = httpsProxyAgent
+// todo 插入function进行请求
 
 dotenv.config()
 
@@ -54,35 +51,9 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
         return await getMessageById(id)
       },
     }
-
     // Set the token limits based on the model's type. This is because different models have different token limits.
     // The token limit includes the token count from both the message array sent and the model response.
-
-    // Check if the model type is GPT-4-turbo or newer
-    if (model.toLowerCase().includes('gpt-4o') || model.toLowerCase().includes('gpt-4-turbo') || model.toLowerCase().includes('-preview')) {
-      // If it's a 'gpt-4o'/'gpt-4-turbo'/'xxxx-preview' model, set the maxModelTokens to 128000
-      options.maxModelTokens = 128000
-      options.maxResponseTokens = 4096
-    }
-    else if (model.toLowerCase().includes('gpt-4')) {
-      // If it's a 'gpt-4' model, set the maxModelTokens and maxResponseTokens to 8192 and 2048 respectively
-      options.maxModelTokens = 8192
-      options.maxResponseTokens = 2048
-    }
-    // Check if the model type includes 'gpt-3.5-turbo'
-    else if (model.toLowerCase().includes('gpt-3.5-turbo-instruct') || model.toLowerCase().includes('gpt-3.5-turbo-0613')) {
-      // If it's a old 'gpt-3.5-turbo' model, set the maxModelTokens to 4096 and maxResponseTokens to 1024
-      options.maxModelTokens = 4096
-      options.maxResponseTokens = 1024
-    }
-    // Check if the model type includes 'gpt-3.5-turbo'
-    else if (model.toLowerCase().includes('gpt-3.5-turbo')) {
-      // If it's a 'gpt-3.5-turbo' model, set the maxModelTokens to 16385 and maxResponseTokens to 4096
-      options.maxModelTokens = 16385
-      options.maxResponseTokens = 4096
-    }
-    // Check if the model type includes '32k'
-    else if (model.toLowerCase().includes('32k')) {
+    if (model.toLowerCase().includes('32k')) {
       // If it's a '32k' model, set the maxModelTokens to 32768 and maxResponseTokens to 8192
       options.maxModelTokens = 32768
       options.maxResponseTokens = 8192
@@ -93,6 +64,10 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
       options.maxModelTokens = 16385
       options.maxResponseTokens = 4096
     }
+    else if (model.toLowerCase().includes('128k')) {
+      options.maxModelTokens = 128000
+      options.maxResponseTokens = 32768
+    }
     // If none of the above, use the default values
     else {
       options.maxModelTokens = 4096
@@ -102,25 +77,7 @@ export async function initApi(key: KeyConfig, chatModel: string, maxContextCount
     if (isNotEmptyString(OPENAI_API_BASE_URL))
       options.apiBaseUrl = `${OPENAI_API_BASE_URL}/v1`
 
-    await setupProxy(options)
-
     return new ChatGPTAPI({ ...options })
-  }
-  else {
-    const options: ChatGPTUnofficialProxyAPIOptions = {
-      accessToken: key.key,
-      apiReverseProxyUrl: isNotEmptyString(key.baseUrl)
-        ? key.baseUrl
-        : isNotEmptyString(config.reverseProxy)
-          ? config.reverseProxy
-          : 'https://ai.fakeopen.com/api/conversation',
-      model,
-      debug: !config.apiDisableDebug,
-    }
-
-    await setupProxy(options)
-
-    return new ChatGPTUnofficialProxyAPI({ ...options })
   }
 }
 const processThreads: { userId: string; abort: AbortController; messageId: string }[] = []
@@ -132,14 +89,6 @@ async function chatReplyProcess(options: RequestOptions) {
   const messageId = options.messageId
   if (key == null || key === undefined)
     throw new Error('没有对应的apikeys配置。请再试一次 | No available apikeys configuration. Please try again.')
-
-  if (key.keyModel === 'ChatGPTUnofficialProxyAPI') {
-    if (!options.room.accountId)
-      updateRoomAccountId(userId, options.room.roomId, getAccountId(key.key))
-
-    if (options.lastContext && ((options.lastContext.conversationId && !options.lastContext.parentMessageId) || (!options.lastContext.conversationId && options.lastContext.parentMessageId)))
-      throw new Error('无法在一个房间同时使用 AccessToken 以及 Api，请联系管理员，或新开聊天室进行对话 | Unable to use AccessToken and Api at the same time in the same room, please contact the administrator or open a new chat room for conversation')
-  }
 
   // Add Chat Record
   updateRoomChatModel(userId, options.room.roomId, model)
@@ -260,33 +209,6 @@ async function chatConfig() {
   })
 }
 
-async function setupProxy(options: ChatGPTAPIOptions | ChatGPTUnofficialProxyAPIOptions) {
-  const config = await getCacheConfig()
-  if (isNotEmptyString(config.socksProxy)) {
-    const agent = new SocksProxyAgent({
-      hostname: config.socksProxy.split(':')[0],
-      port: Number.parseInt(config.socksProxy.split(':')[1]),
-      userId: isNotEmptyString(config.socksAuth) ? config.socksAuth.split(':')[0] : undefined,
-      password: isNotEmptyString(config.socksAuth) ? config.socksAuth.split(':')[1] : undefined,
-
-    })
-    options.fetch = (url, options) => {
-      return fetch(url, { agent, ...options })
-    }
-  }
-  else {
-    if (isNotEmptyString(config.httpsProxy)) {
-      const httpsProxy = config.httpsProxy
-      if (httpsProxy) {
-        const agent = new HttpsProxyAgent(httpsProxy)
-        options.fetch = (url, options) => {
-          return fetch(url, { agent, ...options })
-        }
-      }
-    }
-  }
-}
-
 async function getMessageById(id: string): Promise<ChatMessage | undefined> {
   const isPrompt = id.startsWith('prompt_')
   const chatInfo = await getChatByMessageId(isPrompt ? id.substring(7) : id)
@@ -373,7 +295,6 @@ async function getRandomApiKey(user: UserInfo, chatModel: string, accountId?: st
     .filter(d => d.chatModels.includes(chatModel))
   if (accountId)
     keys = keys.filter(d => d.keyModel === 'ChatGPTUnofficialProxyAPI' && getAccountId(d.key) === accountId)
-
   return randomKeyConfig(keys)
 }
 

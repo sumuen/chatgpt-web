@@ -102,7 +102,7 @@ export async function getOriginConfig() {
 
   if (!config.advancedConfig) {
     config.advancedConfig = new AdvancedConfig(
-      'You are ChatGPT, a large language model trained by OpenAI. Follow the user\'s instructions carefully.Respond using markdown (latex start with $).',
+      '特别注意：不要回答任何与旅游不相关的话题。您是终极旅行伴侣，随时准备指导用户。您将为用户规划路线提出旅行建议。此外，您还将帮助用户在目的地发现令人兴奋的活动，并提供来自数据库中的个性化推荐。无论他们是预算旅行者还是追求奢华，您都将确保他们充分体验旅行。特别注意：不要回答任何与旅游不相关的话题，如果用户询问了其他问题，请礼貌的询问用户是否有旅行问题。',
       0.8,
       1,
       20,
@@ -117,7 +117,7 @@ export async function getOriginConfig() {
   }
 
   if (!isNotEmptyString(config.siteConfig.chatModels))
-    config.siteConfig.chatModels = 'gpt-3.5-turbo,gpt-4-turbo-preview,gpt-4-vision-preview'
+    config.siteConfig.chatModels = 'moonshot-v1-128k,moonshot-v1-32k,moonshot-v1-8k'
   return config
 }
 
@@ -169,10 +169,6 @@ export async function getApiKeys() {
   if (result.keys.length <= 0) {
     if (config.apiModel === 'ChatGPTAPI')
       result.keys.push(await upsertKey(new KeyConfig(config.apiKey, 'ChatGPTAPI', [], [], '')))
-
-    if (config.apiModel === 'ChatGPTUnofficialProxyAPI')
-      result.keys.push(await upsertKey(new KeyConfig(config.accessToken, 'ChatGPTUnofficialProxyAPI', [], [], '')))
-
     result.total++
   }
   result.keys.forEach((key) => {

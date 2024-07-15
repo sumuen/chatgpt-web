@@ -1,3 +1,4 @@
+<!-- eslint-disable vue/no-constant-condition -->
 <script setup lang='ts'>
 import type { Ref } from 'vue'
 import { computed, defineAsyncComponent, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -725,7 +726,7 @@ onUnmounted(() => {
           </div>
 
           <div class="flex items-center space-x-2">
-            <div>
+            <div v-if="false">
               <NUpload
                 :disabled="!isVisionModel"
                 action="/api/upload-image"
@@ -765,13 +766,13 @@ onUnmounted(() => {
               <!-- <span style="margin-left:.25em">{{ usingContext ? '包含上下文' : '不含上下文' }}</span> -->
             </HoverButton>
             <NSelect
-              style="width: 250px"
+              style="width: 350px"
               :value="currentChatModel"
               :options="authStore.session?.chatModels"
               :disabled="!!authStore.session?.auth && !authStore.token && !authStore.session?.authProxyEnabled"
               @update-value="(val) => handleSyncChatModel(val)"
             />
-            <NSlider v-model:value="userStore.userInfo.advanced.maxContextCount" :max="100" :min="0" :step="1" style="width: 88px" :format-tooltip="formatTooltip" @update:value="() => { userStore.updateSetting(false) }" />
+            <NSlider v-if="false" v-model:value="userStore.userInfo.advanced.maxContextCount" :max="100" :min="0" :step="1" style="width: 88px" :format-tooltip="formatTooltip" @update:value="() => { userStore.updateSetting(false) }" />
           </div>
           <div class="flex items-center justify-between space-x-2">
             <NAutoComplete v-model:value="prompt" :options="searchOptions" :render-label="renderOption">
